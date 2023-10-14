@@ -1,2 +1,2 @@
 # socket
- This library provides basic functions for TCP and UDP socket handling.
+ it provides basic functions for TCP/UDP/UNIX DOMAIN socket handling.
