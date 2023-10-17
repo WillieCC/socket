@@ -19,6 +19,7 @@
 #define ENABLE_SOCKET_REUSEADDR 1
 #define MAX_SOCKET_RX_BUFFER (1024*1024)
 #define MAX_SOCKET_TX_BUFFER (1024*1024)
+#define DOMAIN_SOCKET_SERVER "/tmp/test_socket"
 
 #ifndef UNUSED
 #define UNUSED(X) if(0){X=X;};
@@ -34,8 +35,8 @@ typedef struct
     uint8_t bind_ethernet[100];//Bind Ethernet device
     uint16_t port;    //port number;
     uint8_t max_sessions;
-    uint8_t isdelay;  //1
-    uint8_t isreuse;  //1
+    uint8_t isdelay;  
+    uint8_t isreuse;  
 }socket_config_t;
    
 typedef struct
@@ -61,7 +62,7 @@ static inline void dump_ethernet(int32_t sock_fd)
     getsockname(sock_fd, (struct sockaddr*)&addr, &addr_len);
     getifaddrs(&ifaddr);
 
-    // look all interface
+    // look for all interfaces
     for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next)
     {
         if (ifa->ifa_addr)
@@ -80,7 +81,6 @@ static inline void dump_ethernet(int32_t sock_fd)
 
 static inline int32_t socket_connect(socket_handler_t* handler)
 {
-    //if (connect(handler->socket_client, (struct sockaddr*)&handler->addr.unix_addr, sizeof(struct sockaddr)) == -1) 
     if (connect(handler->socket_client, (struct sockaddr*)&handler->addr.unix_addr, sizeof(handler->addr.unix_addr)) == -1)
     {
         perror("connect failed");
@@ -99,7 +99,20 @@ static inline int32_t socket_accept(socket_handler_t* handler)
         return -EINVAL;
     }
 
-    handler->socket_client = accept(handler->socket_server,(struct sockaddr*) &clientInfo, &addrlen);
+    while (1) {
+        handler->socket_client = accept(handler->socket_server,(struct sockaddr*) &clientInfo, &addrlen);
+        if (handler->socket_client != -1) {
+            break;
+        }
+
+        if (handler->socket_client !=EINTR || \
+            handler->socket_client !=EAGAIN  || \
+            handler->socket_client !=EINPROGRESS ) 
+        {
+            break;
+        }
+    }
+
     return handler->socket_client;
 }
 
@@ -187,7 +200,6 @@ static inline int32_t socket_recv(int32_t fd, char* rx_buf, size_t sz_len)
     }
 
     printf("%s\n",rx_buf);
-    //dump_raw_data(rx_buf,ret);
     return ret;
 }
 
@@ -208,11 +220,9 @@ static inline int32_t socket_send(int32_t fd, const char* tx_buf,size_t sz_len)
         }
     }
 
-    //dump_raw_data(tx_buf,ret);
     return ret;
 }
 
-/*disconnect all socket ID*/
 static inline int32_t socket_disconnect(socket_handler_t* handler)
 {
     if(handler->socket_client >0) 
@@ -227,7 +237,6 @@ static inline int32_t socket_disconnect(socket_handler_t* handler)
 
 static inline int32_t load_socket_config(socket_handler_t* handler)
 {
-    //char *tx_buffer,*rx_buffer;	 
     memset(&handler->config,0,sizeof(socket_config_t));    
     handler->rx_buf=malloc(1024*1024);
     handler->tx_buf=malloc(1024*1024);
@@ -240,11 +249,7 @@ static inline int32_t load_socket_config(socket_handler_t* handler)
 
 static inline int32_t create_local_server(socket_handler_t* handler, int32_t socket_type)
 {
-    //struct sockaddr_un server_addr;
-
     handler->addr.unix_addr.sun_family = AF_UNIX;
-    //strcpy(server_addr.sun_path, path);
-	
     handler->socket_server = socket(AF_UNIX, socket_type, 0);
     if (handler->socket_server < 0) 
     {
@@ -278,7 +283,7 @@ static inline int32_t create_local_client(socket_handler_t* handler, int32_t soc
     }
 
     handler->addr.unix_addr.sun_family = AF_UNIX;
-    strcpy(handler->addr.unix_addr.sun_path, "/tmp/my_socket");
+    strcpy(handler->addr.unix_addr.sun_path, DOMAIN_SOCKET_SERVER);
 
     return 0;
 }
@@ -353,9 +358,9 @@ static inline int32_t create_socket_server(socket_handler_t* handler, int32_t so
 
 void Test_domain_socket_server()
 {
-    char message[] = {"Hi,this is server.\n"};
+    const char* message = "Hi,this is server";
     socket_handler_t DomainSocket;
-    strcpy(DomainSocket.addr.unix_addr.sun_path, "/tmp/my_socket");
+    strcpy(DomainSocket.addr.unix_addr.sun_path, DOMAIN_SOCKET_SERVER);
     load_socket_config(&DomainSocket);
     create_local_server(&DomainSocket,SOCK_STREAM);
     
@@ -369,11 +374,13 @@ void Test_domain_socket_server()
             socket_disconnect(&DomainSocket);
         }
     }
+
+    unlink(DOMAIN_SOCKET_SERVER);
 }
 
 void Test_domain_socket_client()
 {
-    const char* message = "Hello, Unix Domain Socket!";
+    const char* message = "Hi, this is client";
     socket_handler_t DomainSocket;
     load_socket_config(&DomainSocket);
     create_local_client(&DomainSocket,SOCK_STREAM);
@@ -401,10 +408,11 @@ void Test_UDP_socket_server()
  
 void Test_TCP_socket_server()
 {
-    char message[] = {"Hi,this is server.\n"};
+    const char* message = "Hi, this is client";
     socket_handler_t tcp_socket;
     load_socket_config(&tcp_socket);
     create_socket_server(&tcp_socket,SOCK_STREAM);
+    
     while(1)
     {
         if(socket_accept(&tcp_socket)>0)
@@ -415,3 +423,25 @@ void Test_TCP_socket_server()
         }
     }
 }
+
+void Test_http_socket_server()
+{
+    socket_handler_t tcp_socket;
+    load_socket_config(&tcp_socket);
+    create_socket_server(&tcp_socket,SOCK_STREAM);
+    const char *response = "HTTP/1.1 200 OK\r\n"
+                      "Content-Length: 13\r\n"
+                      "Content-Type: text/plain\r\n"
+                      "\r\n"
+                      "Hello, World!\r\n";
+    while(1)
+    {
+        if(socket_accept(&tcp_socket)>0)
+        {
+            socket_recv(tcp_socket.socket_client,(void*)tcp_socket.rx_buf,MAX_SOCKET_RX_BUFFER);
+    	    socket_send(tcp_socket.socket_client,response,strlen(response));
+            socket_disconnect(&tcp_socket);
+        }
+    }
+}
+
