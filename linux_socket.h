@@ -1,3 +1,6 @@
+#ifndef _LINUX_SOCKET_H
+#define _LINUX_SOCKET_H
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -444,4 +447,6 @@ void Test_http_socket_server()
         }
     }
 }
+
+#endif
 
