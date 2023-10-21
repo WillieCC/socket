@@ -108,9 +108,9 @@ static inline int32_t socket_accept(socket_handler_t* handler)
             break;
         }
 
-        if (handler->socket_client !=EINTR || \
-            handler->socket_client !=EAGAIN  || \
-            handler->socket_client !=EINPROGRESS ) 
+        if (errno != EINTR && \
+            errno != EAGAIN && \
+            errno != EINPROGRESS ) 
         {
             break;
         }
@@ -155,7 +155,7 @@ static inline int32_t socket_recvfrom(int32_t fd,struct sockaddr *addr,const voi
             break;
         }
 
-        if (errno != EINTR || errno!=EAGAIN) {
+        if (errno != EINTR && errno!=EAGAIN) {
             break;
         }
     }
@@ -172,9 +172,9 @@ static inline int32_t socket_sendto(int32_t fd, struct sockaddr* addr, const cha
             break;
 	}
 		
-        if (errno != EINTR || errno!=EAGAIN) {
+        if (errno != EINTR && errno!=EAGAIN) {
             break;
-	}
+	    }
     }
 
     return ret;
@@ -195,9 +195,9 @@ static inline int32_t socket_recv(int32_t fd, char* rx_buf, size_t sz_len)
         ret = recv(fd,(char*)rx_buf,sz_len,0);
         if (ret != -1) {
             break;
-	}
+	    }
 		
-	if (errno != EINTR || errno!=EAGAIN) {
+	    if (errno != EINTR && errno!=EAGAIN) {
             break;
         }
     }
@@ -217,7 +217,7 @@ static inline int32_t socket_send(int32_t fd, const char* tx_buf,size_t sz_len)
             break;
         }
 
-	if (errno != EINTR || errno!=EAGAIN)
+	    if (errno != EINTR && errno!=EAGAIN)
         {
             break;
         }
